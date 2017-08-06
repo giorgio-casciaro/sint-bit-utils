@@ -12,6 +12,6 @@
   "devDependencies": {
   },
   "dependencies": {
-    "ramda": "^0.23.0",
+    "ramda": "^0.23.0"
   }
 }
