@@ -1,0 +1,17 @@
+{
+  "name": "sint-bit-utils",
+  "version": "0.0.0",
+  "description": "smart scripts for sint microservices",
+  "author": "Giorgio Casciaro <giorgio.casciaro@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/giorgio-casciaro/sint-bit-utils.git"
+  },
+  "scripts": {
+  },
+  "devDependencies": {
+  },
+  "dependencies": {
+    "ramda": "^0.23.0",
+  }
+}
