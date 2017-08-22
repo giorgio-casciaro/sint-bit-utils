@@ -1,4 +1,9 @@
 module.exports = {
+  slug: {
+    type: 'string',
+    description: 'no special chars',
+    pattern: '^[a-zA-Z]*$'
+  },
   id: {
     type: 'string',
     description: 'id in format UUID v4',
@@ -7,7 +12,7 @@ module.exports = {
   updated: { description: 'last update nano timestamp', type: 'integer', minimum: 0 },
   created: { description: 'creation nano timestamp', type: 'integer', minimum: 0 },
   name: {
-    description: 'public name',
+    description: 'name',
     type: 'string'
   },
   public: {

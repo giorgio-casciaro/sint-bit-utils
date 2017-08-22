@@ -11,29 +11,43 @@ var jwt = require('jsonwebtoken')
 const getTokenData = (token, jwtConfig) => new Promise((resolve, reject) => {
   jwt.verify(token, jwtConfig.publicCert, (err, decoded) => { if (err) reject(err); else resolve(decoded) })
 })
+const checkValidity = (token, jwtConfig) => new Promise((resolve, reject) => {
+  jwt.verify(token, jwtConfig.publicCert, (err, decoded) => { if (err) reject(err); else resolve(decoded) })
+})
 module.exports = {
-  async createToken (permissions, meta, jwtConfig) {
+  async createToken (id, permissions, meta, jwtConfig) {
+    var id = uuid()
     permissions = permissions.reduce((a, b) => a.concat(b.permissions), [])
-    var tokenData = { permissions, exp: Math.floor(Date.now() / 1000) + (60 * 60) }
+    var tokenData = { permissions, id , exp: Math.floor(Date.now() / 1000) + (60 * 60) }
     return await new Promise((resolve, reject) => {
       jwt.sign(tokenData, jwtConfig.privateCert, { algorithm: 'RS256' }, (err, token) => { if (err) reject(err); else resolve(token) })
     })
   },
+  async getUserIdFromToken (meta, jwtConfig) {
+    var tokenData = await getTokenData(meta.token, jwtConfig)
+    return tokenData.id
+  },
   getTokenData,
   async userCan (permission, meta, jwtConfig) {
     var tokenData = await getTokenData(meta.token, jwtConfig)
+    checkValidity(tokenData)
+    // console.log('tokenData', tokenData)
     var permissionsSorted = tokenData.permissions.sort((a, b) => b[0] - a[0])
+    // console.log('permissionsSorted', permissionsSorted)
     var permissionsByLevel = Object.values(permissionsSorted.reduce((a, b) => {
       if (!a[b[0]])a[b[0]] = []
       a[b[0]].push(b.slice(1))
       return a
     }, {}))
 
+    // console.log('permissionsByLevel', permissionsByLevel)
     var checkPermissionName = (permissionToCheck) => {
+      // console.log('permissionToCheck', permissionToCheck, permission)
       if (permissionToCheck === permission) return true
       permissionToCheck = permissionToCheck.replace(new RegExp('([\\.\\\\\\+\\*\\?\\[\\^\\]\\$\\(\\)\\{\\}\\=\\!\\<\\>\\|\\:\\-])', 'g'), '\\$1')
       permissionToCheck = permissionToCheck.replace(/\\\*/g, '(.*)').replace(/_/g, '.')
       var check = RegExp('^' + permissionToCheck + '$', 'gi').test(permission)
+      // console.log('permissionToCheck2', permissionToCheck, permission, check)
       return check
     }
     var havePermission = false
@@ -41,6 +55,7 @@ module.exports = {
       var levelPermissionsValues = []
       levelPermissions.forEach((sp) => {
         var spName = sp[0]
+        // console.log('checkPermissionName', spName,checkPermissionName(spName))
         if (checkPermissionName(spName)) {
           var spValue
           if (typeof sp[1] === 'number') {
@@ -54,8 +69,8 @@ module.exports = {
         }
       })
 
-      console.log('PERMISSIONS levelPermissionsValues', levelPermissionsValues, levelPermissions)
-    // 0(one or more) stop loop and deny permission,
+      // console.log('PERMISSIONS levelPermissionsValues', levelPermissionsValues, levelPermissions)
+      // 0(one or more) stop loop and deny permission,
       if (levelPermissionsValues.indexOf(0) !== -1) {
         havePermission = false
         break
@@ -65,10 +80,14 @@ module.exports = {
         havePermission = true
         break
       }
+      if (levelPermissionsValues.indexOf(1) !== -1) {
+        havePermission = true
+      // break
+      }
     // 1(one or more) go to next loop
-      havePermission = true
+      // havePermission = true
     }
-    console.log('PERMISSIONS havePermission', havePermission)
+    // console.log('PERMISSIONS havePermission', havePermission)
   // var havePermission = (tokenData.permissions.indexOf(permission) < 0)
     if (!havePermission) throw new Error('No permission')
   }
