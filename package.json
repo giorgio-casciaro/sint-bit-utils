@@ -1,6 +1,6 @@
 {
   "name": "sint-bit-utils",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "smart scripts for sint microservices",
   "author": "Giorgio Casciaro <sint.bit@gmail.com>",
   "repository": {
