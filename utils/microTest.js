@@ -8,14 +8,14 @@ var stdoutData = []
 var stderrData = []
 
 var consoleMute = function (verbose) {
-  if(verbose===-1)return false;
+  if (verbose === -1) return false
   stdoutData = []
   stderrData = []
   process.stdout.write = function (str, encoding, fd) { stdoutData.push(str.replace(/\r?\n|\r/g, '')) }
   process.stderr.write = function (str, encoding, fd) { stderrData.push(str.replace(/\r?\n|\r/g, '')) }
 }
 var consoleResume = function (verbose) {
-  if(verbose===-1)return false;
+  if (verbose === -1) return false
   process.stdout.write = stdoutSaved
   process.stderr.write = stderrSaved
 }
@@ -37,7 +37,8 @@ module.exports = function getTest (name, testVerbose) {
   }
   // consoleMute()
   return {
-    test: function (actual, expected, message = 'test', comparation = (a, e) => a, verbose = testVerbose) {
+    test: function (actual, expected, message = 'test', comparation, verbose = testVerbose, sendedData) {
+      if (!comparation)comparation = (a, e) => a
       if (testNumber === 0) startFunc()
       testNumber++
       consoleResume(verbose)
@@ -50,6 +51,7 @@ module.exports = function getTest (name, testVerbose) {
           console.info(`- ${testNumber} SUCCESS ${message}`)
           if (verbose)console.info(JSON.stringify(actual, null, 4))
           if (verbose > 1) {
+            console.info({sendedData})
             console.info()
             console.info('  CONSOLE LOGS  ')
             console.info(stdoutData.join('\n\n'))
@@ -67,7 +69,7 @@ module.exports = function getTest (name, testVerbose) {
         errors++
         console.info(`x ${testNumber} ERROR ${message}`)
         console.info(JSON.stringify(actual, null, 4))
-        console.info({comparation: comparation(actual, expected), expected})
+        console.info({sendedData, comparation: comparation(actual, expected), expected})
         console.info()
         console.info('  CONSOLE ERRORS  ')
         console.info(stderrData.join('\n\n'))

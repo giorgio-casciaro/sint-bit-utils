@@ -15,6 +15,9 @@ module.exports = {
       })
     })
   },
+  key (namespace, set, id) {
+    return new Key(namespace, set, id)
+  },
   put (kvDbClient, key, data, meta, policy = { exists: Aerospike.policy.exists.CREATE_OR_REPLACE }) {
     return new Promise((resolve, reject) => {
       kvDbClient.put(checkKey(key, kvDbClient), data, meta, policy, (error, result) => {
@@ -33,6 +36,16 @@ module.exports = {
       })
     })
   },
+  operate (kvDbClient, key, ops, resultOnly = true) {
+    return new Promise((resolve, reject) => {
+      kvDbClient.operate(checkKey(key, kvDbClient), ops, (error, result, meta) => {
+        // if (error) return reject(error)
+        if (error) return resolve(null)
+        if (resultOnly) return resolve(result)
+        resolve({result, meta})
+      })
+    })
+  },
   remove (kvDbClient, key) {
     return new Promise((resolve, reject) => {
       kvDbClient.remove(checkKey(key, kvDbClient), (error, key) => {
@@ -41,11 +54,13 @@ module.exports = {
       })
     })
   },
-  createIndex (kvDbClient, options) {
+  createIndex (kvDbClient, options, skipError = false) {
     return new Promise((resolve, reject) => {
       kvDbClient.createIndex(options, (error, job) => {
+        if (skipError && error) return resolve(error)
         if (error) return reject(error)
         job.waitUntilDone(function (error, result) {
+          if (skipError && error) return resolve(error)
           if (error) return reject(error)
           resolve(result)
         })

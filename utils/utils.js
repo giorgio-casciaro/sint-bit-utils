@@ -43,26 +43,36 @@ function getConsole (config = {debug: false, log: true, error: true, warn: true}
       var args = Array.prototype.slice.call(arguments)
       args[0] = args[0].message || args[0]
       args = args.map((arg) => safeJsonStringify(arg, false))
-      console.error.apply(this, [args[0],serviceName, Date.now() - initTime, serviceId, pack].concat(args))
+      console.error.apply(this, [args[0], serviceName, Date.now() - initTime, serviceId, pack].concat(args))
       console.trace()
     },
     log () {
       if (!config.log) return false
       var args = Array.prototype.slice.call(arguments)
       args = args.map((arg) => safeJsonStringify(arg))
-      console.log.apply(this, [args[0],serviceName, Date.now() - initTime, serviceId, pack].concat(args))
+      console.log.apply(this, [args[0], serviceName, Date.now() - initTime, serviceId, pack].concat(args))
+    },
+    hl () {
+      if (!config.log) return false
+      var args = Array.prototype.slice.call(arguments)
+      // args = args.map((arg) => safeJsonStringify(arg))
+      console.log('')
+      console.log('----------------------HIGHLIGHT---------------------------')
+      console.log.apply(this, args)
+      console.log('----------------------------------------------------------')
+      console.log('')
     },
     debug () {
       if (!config.debug || typeof (console.debug) !== 'function') return false
       var args = Array.prototype.slice.call(arguments)
       args = args.map((arg) => safeJsonStringify(arg))
-      console.debug.apply(this, [args[0],serviceName, Date.now() - initTime, serviceId, pack].concat(args))
+      console.debug.apply(this, [args[0], serviceName, Date.now() - initTime, serviceId, pack].concat(args))
     },
     warn () {
       if (!config.warn || !console.warn) return false
       var args = Array.prototype.slice.call(arguments)
       args = args.map((arg) => safeJsonStringify(arg, false))
-      console.warn.apply(this, [args[0],serviceName, Date.now() - initTime, serviceId, pack].concat(args))
+      console.warn.apply(this, [args[0], serviceName, Date.now() - initTime, serviceId, pack].concat(args))
     }
   }
 }

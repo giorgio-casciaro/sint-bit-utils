@@ -2,12 +2,22 @@ module.exports = {
   slug: {
     type: 'string',
     description: 'no special chars',
-    pattern: '^[a-zA-Z]*$'
+    pattern: '^[a-zA-Z0-9]*$'
+  },
+  string: {
+    type: 'string'
+    // description: 'no special chars'
+    // pattern: '^[a-zA-Z0-9]*$'
   },
   id: {
     type: 'string',
     description: 'id in format UUID v4',
     pattern: '^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$'
+  },
+  description: {
+    type: 'string',
+    description: 'description, max length 255',
+    'maxLength': 255
   },
   updated: { description: 'last update nano timestamp', type: 'integer', minimum: 0 },
   created: { description: 'creation nano timestamp', type: 'integer', minimum: 0 },
@@ -25,15 +35,22 @@ module.exports = {
     type: 'array',
     items: {type: 'array'}
   },
+  rolePermissions: {
+    description: 'roles permissions',
+    type: 'array',
+    items: {type: 'string'}
+  },
   maps: {
     description: 'maps info',
     type: 'array',
     items: {
       type: 'object',
       properties: {
-        bbox: { type: 'number' }
+        centerLat: { type: 'number' },
+        centerLng: { type: 'number' },
+        zoom: { type: 'number' }
       },
-      required: ['bbox']
+      required: ['centerLat', 'centerLng']
     }
   },
   pic: {
@@ -49,8 +66,9 @@ module.exports = {
   tags: {
     description: 'tags',
     type: 'array',
+    'default': [],
     items: {
-      type: 'string'
+      type: 'string', 'minLength': 3, 'maxLength': 50
     }
   },
   email: { description: 'valid email', type: 'string', 'format': 'email' },
