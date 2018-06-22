@@ -7,20 +7,19 @@ var stderrSaved = process.stderr.write
 var stdoutData = []
 var stderrData = []
 
-var consoleMute = function (verbose) {
-  if (verbose === -1) return false
-  stdoutData = []
-  stderrData = []
-  process.stdout.write = function (str, encoding, fd) { stdoutData.push(str.replace(/\r?\n|\r/g, '')) }
-  process.stderr.write = function (str, encoding, fd) { stderrData.push(str.replace(/\r?\n|\r/g, '')) }
-}
-var consoleResume = function (verbose) {
-  if (verbose === -1) return false
-  process.stdout.write = stdoutSaved
-  process.stderr.write = stderrSaved
-}
-
 module.exports = function getTest (name, testVerbose) {
+  var consoleMute = function (verbose = testVerbose) {
+    if (verbose === -1) return false
+    stdoutData = []
+    stderrData = []
+    process.stdout.write = function (str, encoding, fd) { stdoutData.push(str.replace(/\r?\n|\r/g, '')) }
+    process.stderr.write = function (str, encoding, fd) { stderrData.push(str.replace(/\r?\n|\r/g, '')) }
+  }
+  var consoleResume = function (verbose = testVerbose) {
+    if (verbose === -1) return false
+    process.stdout.write = stdoutSaved
+    process.stderr.write = stderrSaved
+  }
   var testNumber = 0
   var testData = {name, verbose: testVerbose, subtests: []}
   var errors = 0
@@ -35,8 +34,68 @@ module.exports = function getTest (name, testVerbose) {
     console.info(`----------------------------------------------------------------`)
     console.info()
   }
+  var sectionNumber = 0
+  var testSectionNumber = 0
   // consoleMute()
   return {
+    consoleResume,
+    consoleMute,
+    sectionHead: function (message = 'test') {
+      if (testNumber === 0) startFunc()
+      consoleResume()
+      sectionNumber++
+      console.info(`--------- ${sectionNumber} ${message} ---------`)
+      testSectionNumber = 0
+      consoleMute()
+    },
+    log: function (msg, data) {
+      consoleResume()
+      console.log('\n' + JSON.stringify(['LOG', 'TEST', msg, data]))
+      consoleMute()
+    },
+    testRaw: function (message = 'test', data, test, verbose = testVerbose) {
+      // if (testNumber === 0) startFunc()
+      testNumber++
+      testSectionNumber++
+      consoleResume(verbose)
+      try {
+        if (errors < maxErrors) {
+          // if (JSONcomparation(actual, expected) !== expected) throw new Error(message)
+          assert.ok(test(data))
+
+          success++
+          console.info(`${sectionNumber}.${testSectionNumber} (${testNumber}) SUCCESS ${message}`)
+          if (verbose)console.info(JSON.stringify(data, null, 4))
+          if (verbose > 1) {
+            console.info({data})
+            console.info()
+            console.info('  CONSOLE LOGS  ')
+            console.info(stdoutData.join('\n\n'))
+          }
+          testData.subtests.push({count: testNumber, success: message, stdout: stdoutData.join('\n\n'), stderr: stderrData.join('\n\n')})
+        } else {
+          if (skipped === 0) {
+            console.info()
+            console.info(`---> SKIPPING (errors > ${maxErrors})`)
+          }
+          skipped++
+          testData.subtests.push({count: testNumber, skipped: true, stdout: stdoutData.join('\n\n'), stderr: stderrData.join('\n\n')})
+        }
+      } catch (error) {
+        errors++
+        console.info(`(${testNumber}) X ${sectionNumber}.${testSectionNumber} ERROR ${message}`)
+        console.info(JSON.stringify(data, null, 4))
+        console.info(`TEST: ${test.toString()}`)
+        console.info()
+        console.info('  CONSOLE ERRORS  ')
+        console.info(stderrData.join('\n\n'))
+        console.info()
+        console.info('  CONSOLE LOGS  ')
+        console.info(stdoutData.join('\n\n'))
+        testData.subtests.push({count: testNumber, data, error: message, stdout: stdoutData.join('\n\n'), stderr: stderrData.join('\n\n')})
+      }
+      consoleMute(verbose)
+    },
     test: function (actual, expected, message = 'test', comparation, verbose = testVerbose, sendedData) {
       if (!comparation)comparation = (a, e) => a
       if (testNumber === 0) startFunc()

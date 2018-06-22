@@ -6,30 +6,29 @@
 //     [5, 'user.*', 'test2', {testParam: 34}] terzo argomento come string: si aspetta una funzione nella cartella permissions
 //   ]}
 // },
-const getConsole = (serviceName, serviceId, pack) => require('sint-bit-utils/utils/utils').getConsole({error: true, debug: true, log: true, warn: true}, serviceName, serviceId, pack)
-var PACKAGE = 'sint-bit-utils'
-var CONSOLE = getConsole(PACKAGE, '----', '-----')
+var PACKAGE = 'sint-bit-auth'
+
+const log = (msg, data) => { console.log('\n' + JSON.stringify(['LOG', 'SINT BIT AUTH', msg, data])) }
+const debug = (msg, data) => { console.log('\n' + JSON.stringify(['DEBUG', 'SINT BIT AUTH', msg, data])) }
+const error = (msg, data) => { console.log('\n' + JSON.stringify(['ERROR', 'SINT BIT AUTH', msg, data])) }
 
 var jwt = require('jsonwebtoken')
-const createToken = async function (userId, permissions, meta, jwtConfig) {
-  // var id = uuid()
-  // CONSOLE.hl('createToken permissions', permissions, typeof (permissions[0]))
-  if (!permissions[0] || !permissions[0][0])permissions = permissions.reduce((a, b) => a.concat(b.permissions), [])
-  var tokenData = { permissions, id: userId, exp: Math.floor(Date.now() / 1000) + (60 * 60) }
-  CONSOLE.hl('tokenData', tokenData)
+const createToken = async function (userId, tokenData = {}, jwtConfig) {
+  tokenData.id = userId
+  tokenData.exp = Math.floor(Date.now() / 1000) + (60 * 60)
   var token = await new Promise((resolve, reject) => {
     jwt.sign(tokenData, jwtConfig.privateCert, { algorithm: 'RS256' }, (err, token) => { if (err) reject(err); else resolve(token) })
   })
-  CONSOLE.hl('tokenData2', await getTokenData(token, jwtConfig))
   return token
 }
 const getTokenData = (token, jwtConfig) => new Promise((resolve, reject) => {
+  // log('getTokenData', {token, jwtConfig})
   jwt.verify(token, jwtConfig.publicCert, (err, decoded) => { if (err) reject(err); else resolve(decoded) })
 })
 const refreshToken = async function (token, jwtConfig) {
   var tokenData = await getTokenData(token, jwtConfig)
-  CONSOLE.hl('tokenData', tokenData)
-  var newToken = await createToken(tokenData.id, tokenData.permissions, {}, jwtConfig)
+  // log('tokenData', tokenData)
+  var newToken = await createToken(tokenData.id, tokenData.data, jwtConfig)
   return newToken
 }
 // const checkValidity = (token, jwtConfig) => new Promise((resolve, reject) => {
@@ -41,8 +40,19 @@ module.exports = {
     try {
       if (!jwtConfig || !meta || !meta.token) throw new Error('getUserIdFromToken need meta.token and jwtConfig')
       var tokenData = await getTokenData(meta.token, jwtConfig)
-      // console.log('getUserIdFromToken', tokenData.id)
+      console.log('getUserIdFromToken', tokenData)
       return tokenData.id
+    } catch (error) {
+      return 0
+    }
+  },
+  async getTokenDataFromToken (meta, jwtConfig) {
+    try {
+      console.log('getTokenDataFromToken', meta, jwtConfig)
+      if (!jwtConfig || !meta || !meta.token) throw new Error('getTokenDataFromToken need meta.token and jwtConfig')
+      var tokenData = await getTokenData(meta.token, jwtConfig)
+      console.log('getTokenDataFromToken', tokenData)
+      return tokenData
     } catch (error) {
       return 0
     }
@@ -53,7 +63,7 @@ module.exports = {
     try {
     // console.log('userCan', {jwtConfig})
       var tokenData = await getTokenData(meta.token, jwtConfig)
-      CONSOLE.hl('userCan tokenData', tokenData)
+      log('userCan tokenData', tokenData)
     // checkValidity(meta.token, jwtConfig)
     // console.log('tokenData', tokenData)
       var permissionsSorted = tokenData.permissions.sort((a, b) => b[0] - a[0])

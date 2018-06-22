@@ -25,31 +25,6 @@ function get (kvDbClient, key, resultOnly = true) {
     })
   })
 }
-function getMultiple (kvDbClient, ns, set, ids, resultOnly = true) {
-  return new Promise((resolve, reject) => {
-    let readKeys = ids.map(id => new Aerospike.Key(ns, set, id))
-    kvDbClient.batchGet(readKeys, function (error, results) {
-      if (error) {
-        console.log('ERROR - %s', error.message)
-        reject(error)
-        return null
-      }
-      resolve(results.map((result) => {
-        switch (result.status) {
-          case Aerospike.status.AEROSPIKE_OK:
-            return result.record
-          case Aerospike.status.AEROSPIKE_ERR_RECORD_NOT_FOUND:
-            console.log('NOT_FOUND - ', result.record.key)
-            return null
-          default:
-            console.log('ERROR - %d - %s', result.status, result.record.key)
-            return null
-        }
-      })
-      )
-    })
-  })
-}
 function operate (kvDbClient, key, ops, resultOnly = true) {
   return new Promise((resolve, reject) => {
     kvDbClient.operate(checkKey(key, kvDbClient), ops, (error, result, meta) => {
@@ -87,7 +62,6 @@ function query (kvDbClient, namespace, set, modify = (query) => query) {
     })
   })
 }
-
 function OrderedIndex (kvDbClient, {ns, set, indexName, sortFunction}) {
   var op = Aerospike.operator
   const lists = Aerospike.lists
@@ -126,7 +100,7 @@ function OrderedIndex (kvDbClient, {ns, set, indexName, sortFunction}) {
   var add = async function (itemId, value) {
     var timestamp = Date.now()
     var item = [itemId, value, timestamp]
-    await operate(kvDbClient, key, [op.incr('count', 1), op.write('updated', timestamp), lists.insert('items', 0, item)])
+    await operate(kvDbClient, key, [op.incr('count', 1), op.write('updated', timestamp), lists.append('items', item)])
     index.items.unshift(item)
     sortIndex()
   }
@@ -135,16 +109,10 @@ function OrderedIndex (kvDbClient, {ns, set, indexName, sortFunction}) {
     console.log('OrderedIndex getItem', itemIndex, index.items[itemIndex])
     return index.items[itemIndex]
   }
-  var getItems = async function (from, to) {
-    await load()
-    console.log('OrderedIndex getItems', from, to, index.items.slice(from, to))
-    return index.items.slice(from, to)
-  }
   return {
     add,
     getMeta,
-    getItem,
-    getItems
+    getItem
   }
 }
 
@@ -152,6 +120,7 @@ function FilteredOrderedIndex (kvDbClient, {ns, set, indexName, itemsSet, filter
   var orderedIndex = OrderedIndex(kvDbClient, {ns, set, indexName})
   var orderedIndexMeta
   var filteredIndex
+  var expandedItems = {}
   var cicles = 0
   var loaded = false
   var cache
@@ -168,74 +137,45 @@ function FilteredOrderedIndex (kvDbClient, {ns, set, indexName, itemsSet, filter
   }
   var getItems = async function (from, to) {
     console.log('FilteredOrderedIndex getItems from, to', from, to)
-    var start = new Date().getTime()
     await load()
     var cacheUpdated = false
     var filterUpdated = false
-    var lastOrderedItem = 0
     while (to > filteredIndex.items.length) {
-      var itemsToProcess = []
-      var itemsToExpand = []
-      var orderedItem, orderedItemUpdated, orderedItemId, itemPosition, filteredItemPosition, filterResult, itemToProcess
-      var expandedItemsById = {}
-      var orderedItems = await orderedIndex.getItems(lastOrderedItem, to - lastOrderedItem)
-      if (!orderedItems.length) break
-      for (var i in orderedItems) {
-        orderedItem = orderedItems[i]
-        orderedItemUpdated = orderedItem[2]
-        orderedItemId = orderedItem[0]
-        filteredItemPosition = filteredIndex.items.length
-        if (cache.items[orderedItemId] && cache.items[orderedItemId][1] === orderedItemUpdated) {
-          filterUpdated = true
-          filteredIndex.items.push([orderedItemId, orderedItemUpdated])
-          if (expand && filteredItemPosition >= from)itemsToExpand.push(orderedItemId)
-        } else {
-          if (expand)itemsToExpand.push(orderedItemId)
-          itemsToProcess.push([orderedItem, filteredItemPosition])
-        }
-      }
-      // console.log('FilteredOrderedIndex getItems check', {orderedItems})
-
-      if (itemsToExpand.length) {
-        var expandedItemsArray = await getMultiple(kvDbClient, ns, itemsSet, itemsToExpand)
-        expandedItemsArray.forEach(item => { expandedItemsById[item.id] = item })
-      }
-      // console.log('FilteredOrderedIndex getItems itemsToProcess', itemsToProcess)
-      var addedProcessedFields = 0
-      for (var p in itemsToProcess) {
-        orderedItem = itemsToProcess[p][0]
-        orderedItemUpdated = orderedItem[2]
-        orderedItemId = orderedItem[0]
-        itemPosition = itemsToProcess[p][1]
-        itemToProcess = orderedItem
-        if (expand)itemToProcess = expandedItemsById[orderedItemId]
-        filterResult = filterFunction(itemToProcess)
+      var orderedItem = await orderedIndex.getItem(cicles)
+      if (!orderedItem) break
+      var orderedItemUpdated = orderedItem[2]
+      var orderedItemId = orderedItem[0]
+      var processItem = orderedItem
+      console.log('processItem', processItem, itemsSet, orderedItem)
+      var filterResult
+      if (cache.items[orderedItemId] && cache.items[orderedItemId][1] === orderedItemUpdated) {
+        filterResult = cache.items[orderedItemId][0]
+        console.log('filterResult cache', filterResult)
+      } else {
+        console.log('processItem', processItem, itemsSet, orderedItem)
+        if (expand)processItem = expandedItems[orderedItemId] = await get(kvDbClient, new Key(ns, itemsSet, orderedItemId))
+        filterResult = filterFunction(processItem)
         cache.items[orderedItemId] = [filterResult, orderedItemUpdated]
         cacheUpdated = true
-        if (filterResult) {
-          filterUpdated = true
-          // console.log('FilteredOrderedIndex getItems check', {orderedItem, itemPosition, filteredIndex: filteredIndex.items})
-          filteredIndex.items.splice(itemPosition + addedProcessedFields, 0, [orderedItemId, orderedItemUpdated])
-          addedProcessedFields++
-        }
       }
-      // console.log('FilteredOrderedIndex getItems check', {filteredIndex: filteredIndex.items})
-
-      lastOrderedItem = to - lastOrderedItem
+      if (filterResult) {
+        filterUpdated = true
+        filteredIndex.items.push([orderedItemId, orderedItemUpdated])
+      }
       cicles++
     }
-    if (cacheUpdated) await put(kvDbClient, new Key(ns, set, 'filter_byid_' + indexName + '_' + filterName), cache)
-    if (filterUpdated) await put(kvDbClient, new Key(ns, set, 'filter_' + indexName + '_' + filterName), filteredIndex)
-    // console.log('FilteredOrderedIndex getItems items', filteredIndex.items)
+    if (cacheUpdated) await set(kvDbClient, new Key(ns, set, 'filter_byid_' + indexName + '_' + filterName), cache)
+    if (filterUpdated) await set(kvDbClient, new Key(ns, set, 'filter_' + indexName + '_' + filterName), filteredIndex)
+    console.log('FilteredOrderedIndex getItems items', filteredIndex.items)
     var results = []
     var rawResults = filteredIndex.items.slice(from, to)
     if (!expand) return rawResults
-    for (i in rawResults) {
+    for (var i in rawResults) {
       var rawResult = rawResults[i]
       var rawResultId = rawResult[0]
-      results.push(expandedItemsById[rawResultId])
+      if (expandedItems[rawResultId])results.push(expandedItems[rawResultId])
+      else { results.push(await get(kvDbClient, new Key(ns, itemsSet, rawResultId))) }
     }
-    console.log('KV FilteredOrderedIndex getItems Execution time: ' + (new Date().getTime() - start))
     return results
   }
   return {
@@ -291,7 +231,6 @@ module.exports = {
   FilteredOrderedIndex,
   put,
   get,
-  getMultiple,
   operate,
   getClient (config) {
     return new Promise((resolve, reject) => {

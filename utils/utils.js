@@ -83,20 +83,47 @@ function errorThrow (serviceName, serviceId, pack) {
     else throw msg
   }
 }
-
+var queueObj = (resultsError) => () => {
+  var resultsQueue = []
+  var errorsIndex = []
+  var dataToResolve = []
+  return {
+    dataToResolve,
+    add: (id, data) => {
+      var dataToResolveIndex = dataToResolve.push({ id, data }) - 1
+      resultsQueue.push({id, __RESULT_TYPE__: 'resultsToResolve', index: dataToResolveIndex})
+    },
+    addError: (id, data, error) => {
+      errorsIndex.push(resultsQueue.length)
+      resultsQueue.push(resultsError(id, error))
+    },
+    resolve: async (func) => {
+      if (dataToResolve.length) {
+        var resolvedResults = await func(dataToResolve)
+        resultsQueue = resultsQueue.map((data) => data.__RESULT_TYPE__ === 'resultsToResolve' ? resolvedResults[data.index] : data)
+      }
+    },
+    returnValue: () => {
+      var returnValue = {results: resultsQueue}
+      if (errorsIndex.length)returnValue.errors = errorsIndex
+      return returnValue
+    }
+  }
+}
 module.exports = {
+  queueObj,
   checkRequired (PROPS_OBJ, PACKAGE) {
     var propsNames = Object.keys(PROPS_OBJ)
     propsNames.forEach((propName) => {
       if (!PROPS_OBJ[propName]) {
-        throw `PACKAGE:${PACKAGE}  Required Dependency ${propName} is missing`
+        throw new Error(`PACKAGE:${PACKAGE}  Required Dependency ${propName} is missing`)
       }
     })
   },
   checkRequiredFiles (FILES, PACKAGE) {
     FILES.forEach((file) => {
       if (!fs.existsSync(file)) {
-        throw `Required File ${file} is missing`
+        throw new Error(`Required File ${file} is missing`)
       }
     })
   },

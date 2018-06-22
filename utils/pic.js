@@ -79,6 +79,22 @@ const updatePic = async function (aerospikeConfig, kvDbClient, id, originalPicPa
 
   return {success: `Pic updated`, id}
 }
+
+const resizeAndGetBuffers = async function (originalPicBuffer, sizes = [['mini', 100, 100]]) {
+  var sharp = require('sharp')
+  var restunObj = {}
+
+  // FULL SIZE
+  var baseImg = sharp(originalPicBuffer).resize(2000, 2000).max()
+  restunObj.full = await baseImg.toBuffer()
+  // SIZES
+  for (var i = sizes.length; i--;) {
+    var size = sizes[i]
+    restunObj[size[0]] = await baseImg.resize(size[1], size[2]).crop().toBuffer()
+  }
+  // unlinkFile(originalPicPath)
+  return restunObj
+}
 const getPic = async function (aerospikeConfig, kvDbClient, id, size = 'mini') {
   try {
     return await readFileInDb(aerospikeConfig, kvDbClient, id + '_' + size)
@@ -88,5 +104,5 @@ const getPic = async function (aerospikeConfig, kvDbClient, id, size = 'mini') {
 }
 
 module.exports = {
-  getPic, updatePic
+  getPic, updatePic, resizeAndGetBuffers
 }
