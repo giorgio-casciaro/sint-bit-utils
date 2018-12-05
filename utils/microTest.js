@@ -93,6 +93,8 @@ module.exports = function getTest (name, testVerbose) {
         console.info('  CONSOLE LOGS  ')
         console.info(stdoutData.join('\n\n'))
         testData.subtests.push({count: testNumber, data, error: message, stdout: stdoutData.join('\n\n'), stderr: stderrData.join('\n\n')})
+        setTimeout(function () {throw new Error(message)},30000)
+
       }
       consoleMute(verbose)
     },

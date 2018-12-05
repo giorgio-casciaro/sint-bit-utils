@@ -16,12 +16,14 @@ var tryFunction = async function (func, times = 10) {
       var result = await func()
       return result
     } catch (err) {
-      error('tryFunction error', {func, countTry, err})
+      error('tryFunction error', {func: func.toString(), countTry, err})
       if (err.code !== 13) await new Promise((resolve) => setTimeout(resolve, 5000))
       else return null// throw new Error(error.message)
     }
   }
 }
+
+// var getEnvProp = () => process.env.couchbaseExtraProps ? ((process.env.couchbaseExtraProps instanceof String) ? JSON.parse(process.env.couchbaseExtraProps) : process.env.couchbaseExtraProps) : false
 
 var couchbase = require('couchbase')
 
@@ -48,6 +50,7 @@ var openBucket = (bucketName) => new Promise(async (resolve, reject) => {
   })
 })
 var upsert = (bucket, id, doc) => new Promise((resolve, reject) => {
+  // if (doc instanceof Object && getEnvProp())Object.assign(doc, getEnvProp())
   bucket.upsert(id, doc, function (err, result) {
     debug('upsert', {id, doc, err, result})
     if (err) return reject(err)
@@ -94,9 +97,10 @@ var getPartial = (bucket, id, fields = []) => new Promise((resolve, reject) => {
   var bucketSubDoc = bucket.lookupIn(id)
   fields.forEach(field => bucketSubDoc.get(field))
   bucketSubDoc.execute(function (err, result) {
-    debug('getPartial', {id, err, result})
-    if (err) return reject(err)
-    else return resolve(result)
+    log('getPartial', {id, err, result})
+    // if (err) return reject(err)
+    // else return resolve(result)
+    return resolve(result)
   })
 })
 var remove = (bucket, id) => new Promise((resolve, reject) => {
@@ -184,11 +188,14 @@ module.exports = {
   },
   async getPartial (id, fields, dataOnly = true) {
     try {
+      // log('getPartial', {id, fields, bucketName})
       var bucket = await tryFunction(() => openBucket(bucketName))
+      // log('getPartial2', {bucket, id, fields})
       var result = await getPartial(bucket, id, fields)
+      // log('getPartial3', {bucket, id, fields, result})
       if (dataOnly && result.contents) {
         var data = {}
-        result.contents.forEach(result => { data[result.path] = result.value })
+        result.contents.forEach(result => { if (!result.error)data[result.path] = result.value })
         return data
       }
       return result
@@ -248,9 +255,9 @@ module.exports = {
       return result
     } catch (error) { debug('error queuePop:' + error); return null }
   },
-  async query (statement, argsArray) {
+  async query (statement, argsArray, waitIndexUpdate, adhoc) {
     var bucket = await tryFunction(() => openBucket(bucketName))
-    var result = await query(bucket, statement, argsArray)
+    var result = await query(bucket, statement, argsArray, waitIndexUpdate, adhoc)
     return result
   },
   async queryIdIfModifiedBefore (loadIfUpdatedAfter, fields, queryBody, argsArray) {

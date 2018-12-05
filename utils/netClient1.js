@@ -51,25 +51,6 @@ var randomizeArray = function (array) {
 
   return array
 }
-class netClientMultiStream extends require('stream').Duplex {
-  _read (chunk) {
-    log('netClientMultiStream _read', { chunk})
-  }
-  _write (chunk, encoding, callback) {
-    this.streams.forEach(stream => stream.write(chunk))
-    log('netClientMultiStream _write', { chunk, encoding })
-    callback()
-  }
-  _destroy (arg1, arg2) {
-    this.streams.forEach(stream => stream.destroy())
-    log('netClientMultiStream _destroy', { arg1, arg2 })
-    this.streams = []
-    // // READ STREAM FROM RESOURCE
-    // this.zeromqServer.send([this.clientIdRaw, JSON.stringify({ reqId: this.reqId, type: 'streamEnd' })])
-    // // if (this.externalBuffer && this.externalBuffer[0]) this.push(this.externalBuffer.shift())
-    // log('_destroy', {})
-  }
-}
 class netClientMultiStreamEmitter extends require('events') {}
 
 var methods = {
@@ -78,32 +59,32 @@ var methods = {
     if (!captureEmitQueue) return []
     return emitQueue[eventName] || []
   },
-  // listen: async (serviceName, method, params) => {
-  //   // serviceRequests=[{serviceName, method, params}]
-  //   var multiStream = new netClientMultiStreamEmitter()
-  //   multiStream.destroy = () => {
-  //     multiStream.streamManager.destroy()
-  //   }
-  //   var addedStream = (stream) => {
-  //     multiStream.emit('addedStream', stream)
-  //     log('listen addedStream', {streamInfo: stream.info})
-  //     stream.on('readable', () => {
-  //       let data
-  //       while (data = stream.read()) {
-  //         log('listen streamEvent', {data, streamInfo: stream.info})
-  //         multiStream.emit('streamEvent', data.concat(stream.info))
-  //       }
-  //     })
-  //     .on('error', (data) => log('listen error', {streamInfo: stream.info}))
-  //     .on('end', (data) => log('listen end', {streamInfo: stream.info}))
-  //   }
-  //   var removedStream = (stream) => {
-  //     log('listen removedStream', {streamInfo: stream.info})
-  //     multiStream.emit('removedStream', stream)
-  //   }
-  //   multiStream.streamManager = await methods.rpc(serviceName, method, params, {}, true, true, addedStream, removedStream)
-  //   return multiStream
-  // },
+  listen: async (serviceName, method, params) => {
+    // serviceRequests=[{serviceName, method, params}]
+    var multiStream = new netClientMultiStreamEmitter()
+    multiStream.destroy = () => {
+      multiStream.streamManager.destroy()
+    }
+    var addedStream = (stream) => {
+      multiStream.emit('addedStream', stream)
+      log('listen addedStream', {streamInfo: stream.info})
+      stream.on('readable', () => {
+        let data
+        while (data = stream.read()) {
+          log('listen streamEvent', {data, streamInfo: stream.info})
+          multiStream.emit('streamEvent', data.concat(stream.info))
+        }
+      })
+      .on('error', (data) => log('listen error', {streamInfo: stream.info}))
+      .on('end', (data) => log('listen end', {streamInfo: stream.info}))
+    }
+    var removedStream = (stream) => {
+      log('listen removedStream', {streamInfo: stream.info})
+      multiStream.emit('removedStream', stream)
+    }
+    multiStream.streamManager = await methods.rpc(serviceName, method, params, {}, true, true, addedStream, removedStream)
+    return multiStream
+  },
   // listen: async (serviceRequests) => {
   //   // serviceRequests=[{serviceName, method, params}]
   //   var multiStream = new netClientMultiStreamEmitter()
@@ -180,82 +161,64 @@ var methods = {
     var conn = null
     var hosts = null
 
-    // try {
-    log('rpc', {serviceName, methodName, data, toEveryTask, asStream, hosts: mainWatcher.hosts})
-    if (toEveryTask && asStream) {
-      var streamsManager = new netClientMultiStream({objectMode: true, writableObjectMode: true, readableObjectMode: true})
-      while (!conns) {
-        hosts = specificHost ? [specificHost] : mainWatcher.hosts
-        if (hosts) conns = await zeromqClient.getConnectedConnections(hosts.map(hostToPath))
-        if (!conns || conns.length !== hosts.length) await new Promise((resolve) => setTimeout(resolve, 300))
-      }
-      streamsManager.streams = await Promise.all(conns.map((conn) => conn.rpc(methodName, data, meta, asStream)))
-      streamsManager.streams = streamsManager.streams.filter((stream) => !!stream)
-      streamsManager.streams.forEach((stream) => {
-        stream.on('data', (data) => { streamsManager.push(data) })
-        // stream.on('error', (data) => { streamsManager.push(data) })
-        // streamsManager.pipe(stream)
-      })
-      if (addedStream)streamsManager.streams.forEach(addedStream)
-      // streamsManager.on('finish', (error) => { log('streamsManager finish', {error}) })
-      // streamsManager.on('error', (error) => { log('streamsManager error', {error}) })
-      // streamsManager.on('data', (data) => { log('streamsManager data', data) })
-      // streamsManager.on('end', (error) => { log('streamsManager end', error) })
-      // streamsManager.on('destroy', (error) => { log('streamsManager destroy', error) })
-      // streamsManager.on('close', (data) => {
-      //   streamsManager.streams.forEach(stream => { if (stream)stream.destroy() })
-      //   delete streamsManager.streams
-      //   mainWatcher.off('addedHost', onAddedHost)
-      // })
-      var onAddedHost = async function (host, service) {
-        log('addedHost', {host, service, methodName, data, meta, asStream})
-        if (service === serviceName) {
-          var conn = await zeromqClient.getConnection(hostToPath(host))
-          var stream = await conn.rpc(methodName, data, meta, asStream)
-          if (stream) {
-            stream.on('data', (data) => { streamsManager.push(data) })
-            // streamsManager.pipe(stream)
-            // streamsManager.pipe(stream)
-            // streamsManager.pipe(stream)
-            if (addedStream)addedStream(stream)
-          } else log('addedHost get stream error', {host, service, methodName, data})
+    try {
+      log('rpc', {serviceName, methodName, data, toEveryTask, asStream, hosts: mainWatcher.hosts})
+      if (toEveryTask && asStream) {
+        while (!conns) {
+          hosts = specificHost ? [specificHost] : mainWatcher.hosts
+          if (hosts) conns = await zeromqClient.getConnectedConnections(hosts.map(hostToPath))
+          if (!conns || conns.length !== hosts.length) await new Promise((resolve) => setTimeout(resolve, 300))
         }
-      }
-      mainWatcher.on('addedHost', onAddedHost)
+        var streams = await Promise.all(conns.map((conn) => conn.rpc(methodName, data, meta, asStream)))
+        streams = streams.filter((stream) => !!stream)
+        streams.forEach(addedStream)
 
-      return streamsManager
-    } else if (toEveryTask && !asStream) {
-      while (!conns) {
-        hosts = specificHost ? [specificHost] : mainWatcher.hosts
-        if (hosts) conns = await zeromqClient.getConnectedConnections(hosts.map(hostToPath))
-        if (!conns || conns.length !== hosts.length) await new Promise((resolve) => setTimeout(resolve, 300))
+        var onAddedHost = async function (host, service) {
+          log('addedHost', {host, service, methodName, data, meta, asStream})
+          if (service === serviceName) {
+            var conn = await zeromqClient.getConnection(hostToPath(host))
+            var stream = await conn.rpc(methodName, data, meta, asStream)
+            if (stream) {
+              streams.push(stream)
+              if (addedStream)addedStream(stream)
+            } else log('addedHost get stream error', {host, service, methodName, data})
+          }
+        }
+        mainWatcher.on('addedHost', onAddedHost)
+        var streamsManager = {
+          streams,
+          destroy: () => {
+            mainWatcher.listeners--
+            streamsManager.streams.forEach(stream => { if (stream)stream.destroy() })
+            delete streamsManager.streams
+            mainWatcher.off('addedHost', onAddedHost)
+          }
+        }
+        return streamsManager
+      } else if (toEveryTask && !asStream) {
+        while (!conns) {
+          hosts = specificHost ? [specificHost] : mainWatcher.hosts
+          if (hosts) conns = await zeromqClient.getConnectedConnections(hosts.map(hostToPath))
+          if (!conns || conns.length !== hosts.length) await new Promise((resolve) => setTimeout(resolve, 300))
+        }
+        var responses = await Promise.all(conns.map((conn) => conn.rpc(methodName, data, meta, asStream)))
+        return responses
+      } else {
+        while (!conn) {
+          hosts = specificHost ? [specificHost] : mainWatcher.hosts
+          log('hosts', {serviceName, methodName, hosts})
+          if (hosts && hosts.length) conns = await zeromqClient.getConnectedConnections(hosts.map(hostToPath))
+          if (conns) log('conns', {connIndex: Math.floor(Math.random() * conns.length)})
+          if (conns) conn = conns[Math.floor(Math.random() * conns.length)]
+          if (!conn) await new Promise((resolve) => setTimeout(resolve, 300))
+        }
+        var response = await conn.rpc(methodName, data, meta, asStream)
+        return response
       }
-      var responses = await Promise.all(conns.map((conn) => conn.rpc(methodName, data, meta, asStream)))
-      return responses
-    } else {
-      while (!conn) {
-        hosts = specificHost ? [specificHost] : mainWatcher.hosts
-        log('hosts', { serviceName, methodName, hosts })
-        if (hosts && hosts.length) conns = await zeromqClient.getConnectedConnections(hosts.map(hostToPath))
-        let connIndex = Math.floor(Math.random() * conns.length)
-        if (conns && conns.length) debug('conns', { connIndex })
-        // if (conns && conns.length) console.log(conns)
-        if (conns && conns.length) conn = conns[connIndex]
-        // if (conn) console.log(conn)
-        if (!conn) await new Promise((resolve) => setTimeout(resolve, 300))
-        // log('hosts', {serviceName, methodName, hosts})
-        // if (hosts && hosts.length) conns = await zeromqClient.getConnectedConnections(hosts.map(hostToPath))
-        // if (conns) log('conns', {connIndex: Math.floor(Math.random() * conns.length)})
-        // if (conns) conn = conns[Math.floor(Math.random() * conns.length)]
-        // if (!conn) await new Promise((resolve) => setTimeout(resolve, 300))
-      }
-      var response = await conn.rpc(methodName, data, meta, asStream)
-      return response
+    } catch (err) {
+      debug('zeromqClient rpcTry error', {err: err ? err.message : 'error', methodName, data, meta, asStream})
+      throw new Error(err)
     }
-    // } catch (err) {
-    //   log('zeromqClient rpcTry error', {err: err ? err.message : 'error', methodName, data, meta, asStream})
-    //   throw new Error(err)
-    // }
   },
   push: async (eventName, data, meta) => {}
 }
